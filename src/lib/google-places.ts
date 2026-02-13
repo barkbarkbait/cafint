@@ -40,29 +40,35 @@ function getTimeBusyness(config: CafeConfig): number {
   return base;
 }
 
-export function createMockFallback(config: CafeConfig): CafeData {
-  const busyness = getTimeBusyness(config);
-  const cached = getCached();
-  const previousBusyness = cached?.data.find(
-    (c) => c.name === config.name
-  )?.busyness;
-
+export function createClosedFallback(config: CafeConfig): CafeData {
   return {
     name: config.name,
     location: config.location,
     distance: config.distance,
-    busyness,
-    trend: calculateTrend(busyness, previousBusyness),
+    busyness: 0,
+    trend: "stable",
     lastUpdated: getTimeString(),
     isInsideTreasury: config.isInsideTreasury,
-    source: "mock",
+    source: "live",
   };
+}
+
+function isCbrBusinessHours(): boolean {
+  const h = parseInt(
+    new Date().toLocaleString("en-AU", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "Australia/Sydney",
+    }),
+    10
+  );
+  return h >= 7 && h < 19;
 }
 
 async function fetchCafeStatus(
   config: CafeConfig
 ): Promise<CafeData | null> {
-  if (!API_KEY) return null;
+  if (!API_KEY || !isCbrBusinessHours()) return null;
 
   try {
     const url = `https://places.googleapis.com/v1/places/${config.placeId}`;
@@ -117,11 +123,11 @@ export async function fetchAllCafes(): Promise<{
       liveCount++;
       return result.value;
     }
-    return createMockFallback(config);
+    return createClosedFallback(config);
   });
 
   return {
     cafes,
-    source: liveCount > 0 ? "live" : "mock",
+    source: "live",
   };
 }

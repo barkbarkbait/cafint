@@ -7,7 +7,7 @@ import {
   setCache,
   getNextRefreshTime,
 } from "@/lib/cache";
-import { fetchAllCafes, createMockFallback } from "@/lib/google-places";
+import { fetchAllCafes, createClosedFallback } from "@/lib/google-places";
 
 export const dynamic = "force-dynamic";
 
@@ -48,12 +48,12 @@ export async function GET(): Promise<NextResponse<CafeApiResponse>> {
       });
     }
 
-    // 4. Final fallback: time-aware mock data
-    const mockCafes = CAFE_CONFIGS.map((config) => createMockFallback(config));
+    // 4. Final fallback: hold at 0%
+    const closedCafes = CAFE_CONFIGS.map((config) => createClosedFallback(config));
     return NextResponse.json({
-      cafes: mockCafes,
+      cafes: closedCafes,
       fetchedAt: now,
-      source: "mock",
+      source: "live",
       nextRefresh: now,
     });
   }

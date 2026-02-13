@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { CafeData, CafeApiResponse, GaugeLevel } from "@/lib/types";
-import { GAUGE_LEVELS, MOCK_CAFES } from "@/lib/constants";
+import { GAUGE_LEVELS, CAFE_CONFIGS } from "@/lib/constants";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -439,7 +439,18 @@ function Footer() {
 const REFRESH_INTERVAL_MS = 3_600_000; // 1 hour
 
 export default function Home() {
-  const [cafes, setCafes] = useState<CafeData[]>(MOCK_CAFES);
+  const [cafes, setCafes] = useState<CafeData[]>(
+    CAFE_CONFIGS.map((c) => ({
+      name: c.name,
+      location: c.location,
+      distance: c.distance,
+      busyness: 0,
+      trend: "stable" as const,
+      lastUpdated: "",
+      isInsideTreasury: c.isInsideTreasury,
+      source: "live" as const,
+    }))
+  );
   const [dataSource, setDataSource] = useState<"live" | "cached" | "mock">("mock");
   const [mounted, setMounted] = useState(false);
 
