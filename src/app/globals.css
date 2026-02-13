@@ -1,26 +1,111 @@
 @import "tailwindcss";
 
 :root {
+  /* Treasury palette */
+  --tsy-navy: #00293c;
+  --tsy-navy-dark: #001b28;
+  --tsy-teal: #00698f;
+  --tsy-teal-hover: #004d6a;
+  --tsy-teal-light: #e6f3f7;
+  --tsy-charcoal: #313131;
+  --tsy-gray: #626262;
+  --tsy-gray-light: #f5f5f5;
+  --tsy-border: #d6d6d6;
+  --tsy-white: #ffffff;
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #313131;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-tsy-navy: var(--tsy-navy);
+  --color-tsy-navy-dark: var(--tsy-navy-dark);
+  --color-tsy-teal: var(--tsy-teal);
+  --color-tsy-teal-hover: var(--tsy-teal-hover);
+  --color-tsy-teal-light: var(--tsy-teal-light);
+  --color-tsy-charcoal: var(--tsy-charcoal);
+  --color-tsy-gray: var(--tsy-gray);
+  --color-tsy-gray-light: var(--tsy-gray-light);
+  --color-tsy-border: var(--tsy-border);
+  --color-tsy-white: var(--tsy-white);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--tsy-white);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+a {
+  color: var(--tsy-teal);
+  text-decoration: underline;
+}
+a:hover {
+  color: var(--tsy-teal-hover);
+}
+
+/* Animations */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes sweep-needle {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(var(--needle-rotation)); }
+}
+.animate-sweep {
+  animation: sweep-needle 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fill-bar {
+  from { width: 0%; }
+  to { width: var(--bar-width); }
+}
+.animate-fill-bar {
+  animation: fill-bar 0.8s ease-out forwards;
+}
+
+/* Status Badge animations */
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--badge-glow-color, rgba(0,0,0,0.1)); }
+  50% { box-shadow: 0 0 20px 4px var(--badge-glow-color, rgba(0,0,0,0.1)); }
+}
+.animate-badge-pulse {
+  animation: badge-pulse 3s ease-in-out infinite;
+}
+
+@keyframes badge-border-pulse {
+  0%, 100% { border-color: var(--badge-border-color, #d6d6d6); }
+  50% { border-color: var(--badge-border-active, #d6d6d6); }
+}
+.animate-badge-border-pulse {
+  animation: badge-border-pulse 3s ease-in-out infinite;
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.4; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+.animate-scan-line {
+  animation: scan-line 4s linear infinite;
+}
+
+/* Source indicator pulse */
+@keyframes source-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+.animate-source-pulse {
+  animation: source-pulse 2s ease-in-out infinite;
 }
