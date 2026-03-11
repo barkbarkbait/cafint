@@ -1,60 +1,53 @@
 import { NextResponse } from "next/server";
-import type { CafeApiResponse } from "@/lib/types";
-import { CAFE_CONFIGS, MOCK_CAFES } from "@/lib/constants";
+import type { CafeConfig, CafeApiResponse } from "@/lib/types";
+import { CAFE_CONFIGS, CACHE_TTL_MS } from "@/lib/constants";
 import {
-  getCached,
-  isFresh,
-  setCache,
-  getNextRefreshTime,
+  isVenueFresh,
+  getVenueCached,
+  setVenueCache,
+  getVenueExpiry,
 } from "@/lib/cache";
-import { fetchAllCafes, createClosedFallback } from "@/lib/google-places";
+import { fetchCafeStatus, createClosedFallback } from "@/lib/google-places";
 
 export const dynamic = "force-dynamic";
+
+async function resolveVenue(config: CafeConfig): Promise<void> {
+  const ttl = config.refreshIntervalMs ?? CACHE_TTL_MS;
+
+  if (config.isAlwaysOpen) {
+    // Always-open: serve cache if fresh, otherwise fetch
+    if (isVenueFresh(config.name, ttl)) return;
+    setVenueCache((await fetchCafeStatus(config)) ?? createClosedFallback(config));
+  } else {
+    // Regular venue: fetchCafeStatus returns null when outside venueHours → no caching
+    if (isVenueFresh(config.name, ttl)) return;
+    const fresh = await fetchCafeStatus(config);
+    if (fresh !== null) setVenueCache(fresh);
+  }
+}
 
 export async function GET(): Promise<NextResponse<CafeApiResponse>> {
   const now = new Date().toISOString();
 
-  // 1. Try fresh cache first
-  if (isFresh()) {
-    const cached = getCached()!;
-    return NextResponse.json({
-      cafes: cached.data,
-      fetchedAt: new Date(cached.fetchedAt).toISOString(),
-      source: cached.data.some((c) => c.source === "live") ? "live" : "cached",
-      nextRefresh: getNextRefreshTime(),
-    });
-  }
+  await Promise.allSettled(CAFE_CONFIGS.map(resolveVenue));
 
-  // 2. Try fetching live data
-  try {
-    const { cafes, source } = await fetchAllCafes();
-    setCache(cafes);
+  const cafes = CAFE_CONFIGS.map(
+    (config) => getVenueCached(config.name) ?? createClosedFallback(config)
+  );
 
-    return NextResponse.json({
-      cafes,
-      fetchedAt: now,
-      source,
-      nextRefresh: getNextRefreshTime(),
-    });
-  } catch {
-    // 3. Fall back to stale cache
-    const stale = getCached();
-    if (stale) {
-      return NextResponse.json({
-        cafes: stale.data,
-        fetchedAt: new Date(stale.fetchedAt).toISOString(),
-        source: "cached",
-        nextRefresh: now, // retry next request
-      });
-    }
+  // Next refresh = earliest cache expiry across all venues
+  const nextRefresh = new Date(
+    Math.min(
+      ...CAFE_CONFIGS.map((c) =>
+        getVenueExpiry(c.name, c.refreshIntervalMs ?? CACHE_TTL_MS)
+      )
+    )
+  ).toISOString();
 
-    // 4. Final fallback: hold at 0%
-    const closedCafes = CAFE_CONFIGS.map((config) => createClosedFallback(config));
-    return NextResponse.json({
-      cafes: closedCafes,
-      fetchedAt: now,
-      source: "live",
-      nextRefresh: now,
-    });
-  }
+  return NextResponse.json({
+    cafes,
+    fetchedAt: now,
+    source: "live",
+    nextRefresh,
+  });
 }

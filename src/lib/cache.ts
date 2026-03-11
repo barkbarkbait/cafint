@@ -1,34 +1,30 @@
 import type { CafeData } from "./types";
-import { CACHE_TTL_MS } from "./constants";
 
-interface CacheEntry {
-  data: CafeData[];
+interface VenueEntry {
+  data: CafeData;
   fetchedAt: number;
-  previousData?: CafeData[];
 }
 
-let cache: CacheEntry | null = null;
+const venueCache = new Map<string, VenueEntry>();
 
-export function getCached(): CacheEntry | null {
-  return cache;
+export function isVenueFresh(name: string, ttlMs: number): boolean {
+  const entry = venueCache.get(name);
+  if (!entry) return false;
+  return Date.now() - entry.fetchedAt < ttlMs;
 }
 
-export function isFresh(): boolean {
-  if (!cache) return false;
-  return Date.now() - cache.fetchedAt < CACHE_TTL_MS;
+export function getVenueCached(name: string): CafeData | undefined {
+  return venueCache.get(name)?.data;
 }
 
-export function isStale(): boolean {
-  // Stale = exists but older than TTL. We'll still serve it as fallback.
-  return cache !== null && !isFresh();
+export function setVenueCache(data: CafeData): void {
+  venueCache.set(data.name, { data, fetchedAt: Date.now() });
 }
 
-export function setCache(data: CafeData[]): void {
-  cache = {
-    data,
-    fetchedAt: Date.now(),
-    previousData: cache?.data,
-  };
+export function getVenueExpiry(name: string, ttlMs: number): number {
+  const entry = venueCache.get(name);
+  if (!entry) return Date.now(); // already expired
+  return entry.fetchedAt + ttlMs;
 }
 
 export function calculateTrend(
@@ -40,9 +36,4 @@ export function calculateTrend(
   if (delta > 5) return "rising";
   if (delta < -5) return "falling";
   return "stable";
-}
-
-export function getNextRefreshTime(): string {
-  if (!cache) return new Date().toISOString();
-  return new Date(cache.fetchedAt + CACHE_TTL_MS).toISOString();
 }

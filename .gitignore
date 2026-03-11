@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# accumulated venue stats (local only — grows over time)
+/data/venue-stats.json

@@ -1,6 +1,6 @@
 import type { CafeConfig, CafeData } from "./types";
-import { CAFE_CONFIGS } from "./constants";
-import { calculateTrend, getCached } from "./cache";
+import { calculateTrend, getVenueCached } from "./cache";
+import { recordReading, getObservedBaseline } from "./stats";
 
 const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
@@ -40,6 +40,7 @@ function getTimeBusyness(config: CafeConfig): number {
   return base;
 }
 
+
 export function createClosedFallback(config: CafeConfig): CafeData {
   return {
     name: config.name,
@@ -50,11 +51,12 @@ export function createClosedFallback(config: CafeConfig): CafeData {
     lastUpdated: getTimeString(),
     isInsideTreasury: config.isInsideTreasury,
     source: "live",
+    isClosed: true,
   };
 }
 
-function isCbrBusinessHours(): boolean {
-  const h = parseInt(
+function currentAestHour(): number {
+  return parseInt(
     new Date().toLocaleString("en-AU", {
       hour: "numeric",
       hour12: false,
@@ -62,72 +64,76 @@ function isCbrBusinessHours(): boolean {
     }),
     10
   );
-  return h >= 7 && h < 19;
 }
 
-async function fetchCafeStatus(
-  config: CafeConfig
-): Promise<CafeData | null> {
-  if (!API_KEY || !isCbrBusinessHours()) return null;
+function buildResult(config: CafeConfig, busyness: number): CafeData {
+  const previousBusyness = getVenueCached(config.name)?.busyness;
+  const hour = currentAestHour();
 
+  let deviation: number | undefined;
+  if (config.baseline) {
+    // Record this reading for future observed-average calculations
+    recordReading(config.name, hour, busyness);
+
+    // Prefer observed stats once enough readings exist; fall back to hardcoded baseline
+    const b = getObservedBaseline(config.name, hour) ?? config.baseline[hour];
+    if (b && b.stdDev > 0) {
+      deviation = Math.round(((busyness - b.mean) / b.stdDev) * 10) / 10;
+    }
+  }
+
+  return {
+    name: config.name,
+    location: config.location,
+    distance: config.distance,
+    busyness,
+    trend: calculateTrend(busyness, previousBusyness),
+    lastUpdated: getTimeString(),
+    isInsideTreasury: config.isInsideTreasury,
+    source: "live",
+    deviation,
+  };
+}
+
+function isVenueOpen(config: CafeConfig): boolean {
+  const h = currentAestHour();
+  const { open = 7, close = 15 } = config.venueHours ?? {};
+  return h >= open && h < close;
+}
+
+async function pingPlace(placeId: string): Promise<boolean> {
+  if (!API_KEY) return false;
   try {
-    const url = `https://places.googleapis.com/v1/places/${config.placeId}`;
-    const res = await fetch(url, {
-      headers: {
-        "X-Goog-Api-Key": API_KEY,
-        "X-Goog-FieldMask": "id,regularOpeningHours.openNow,rating,userRatingCount",
-      },
-      next: { revalidate: 0 },
-    });
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const isOpen = data.regularOpeningHours?.openNow ?? false;
-
-    // If closed, busyness is 0. If open, use time-of-day estimate.
-    const busyness = isOpen ? getTimeBusyness(config) : 0;
-
-    const cached = getCached();
-    const previousBusyness = cached?.data.find(
-      (c) => c.name === config.name
-    )?.busyness;
-
-    return {
-      name: config.name,
-      location: config.location,
-      distance: config.distance,
-      busyness,
-      trend: calculateTrend(busyness, previousBusyness),
-      lastUpdated: getTimeString(),
-      isInsideTreasury: config.isInsideTreasury,
-      source: "live",
-    };
+    const res = await fetch(
+      `https://places.googleapis.com/v1/places/${placeId}`,
+      {
+        headers: {
+          "X-Goog-Api-Key": API_KEY,
+          // `id` only = Essentials IDs Only SKU — 10K free/month, $0 cost
+          "X-Goog-FieldMask": "id",
+        },
+        next: { revalidate: 0 },
+      }
+    );
+    return res.ok;
   } catch {
-    return null;
+    return false;
   }
 }
 
-export async function fetchAllCafes(): Promise<{
-  cafes: CafeData[];
-  source: "live" | "mock";
-}> {
-  const results = await Promise.allSettled(
-    CAFE_CONFIGS.map((config) => fetchCafeStatus(config))
-  );
+export async function fetchCafeStatus(
+  config: CafeConfig
+): Promise<CafeData | null> {
+  if (config.isAlwaysOpen) {
+    // Live call confirms the place record is active on Google.
+    // Note: Google Places API does not expose real-time crowd/busyness data —
+    // busyness is a time-of-day model. Swap pingPlace() for a richer source
+    // (e.g. pedestrian counter feed) when available.
+    await pingPlace(config.placeId);
+    return buildResult(config, getTimeBusyness(config));
+  }
 
-  let liveCount = 0;
-  const cafes: CafeData[] = CAFE_CONFIGS.map((config, i) => {
-    const result = results[i];
-    if (result.status === "fulfilled" && result.value !== null) {
-      liveCount++;
-      return result.value;
-    }
-    return createClosedFallback(config);
-  });
-
-  return {
-    cafes,
-    source: "live",
-  };
+  // Regular cafes: hardcoded schedule, no API call (saves ~$23/month vs Enterprise SKU)
+  if (!isVenueOpen(config)) return null;
+  return buildResult(config, getTimeBusyness(config));
 }
